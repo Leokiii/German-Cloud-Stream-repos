@@ -1,21 +1,51 @@
-# `Cloudstream3 Plugin Repo Template`
+# German CloudStream Repos
 
-Template for a [Cloudstream3](https://github.com/recloudstream) plugin repo
+A [CloudStream](https://github.com/recloudstream) plugin repository with German anime providers.
 
-**⚠️ Make sure you check "Include all branches" when using this template**
+## Add to CloudStream
 
- 
-## Getting started with writing your first plugin
+In CloudStream: **Settings → Extensions → Add repository**, then paste:
 
-This template includes 1 example plugin.
+```
+https://raw.githubusercontent.com/Leokiii/German-Cloud-Stream-repos/builds/plugins.json
+```
 
-1. Open the root build.gradle.kts, read the comments and replace all the placeholders
-2. Familiarize yourself with the project structure. Most files are commented
-3. Build or deploy your first plugin using:
-   - Windows: `.\gradlew.bat ExampleProvider:make` or `.\gradlew.bat ExampleProvider:deployWithAdb`
-   - Linux & Mac: `./gradlew ExampleProvider:make` or `./gradlew ExampleProvider:deployWithAdb`
+Then install the plugins you want from this repo.
+
+## Included providers
+
+| Plugin       | Site               | Notes                                   |
+|--------------|--------------------|-----------------------------------------|
+| AniWorld     | aniworld.to        | Also works via the aniworld.site mirror |
+| AnimeToast   | animetoast.cc      | Ger-Dub & Ger-Sub                        |
+| Anime-Stream | anime-stream.to    | Series & movies                          |
+| Anime-Base   | anime-base.net     | Community streams                        |
+
+## How the build works
+
+- Push to `master`/`main` triggers `.github/workflows/build.yml`.
+- The workflow builds every plugin into a `.cs3` file and generates `plugins.json`
+  (via `./gradlew make makePluginsJson`), then force-pushes them to the **`builds`** branch.
+- The workflow auto-creates the `builds` branch on the first run if it doesn't exist.
+- CloudStream reads the raw `plugins.json` from the `builds` branch (the URL above).
+
+## Building locally
+
+- Windows: `.\gradlew.bat AniWorld:make`
+- Linux & Mac: `./gradlew AniWorld:make`
+
+Replace `AniWorld` with `AnimeToast`, `AnimeStream`, or `AnimeBase` to build a specific plugin.
+New plugin folders (any directory with a `build.gradle.kts`) are picked up automatically by
+`settings.gradle.kts`.
+
+## Notes on maintenance
+
+These providers scrape live websites. If a site changes its HTML layout, the relevant
+CSS selectors in that provider's `*Provider.kt` (`getMainPage`, `search`, `load`, `loadLinks`)
+may need updating. Each method is commented to make this easier.
 
 ## Attribution
 
-This template as well as the gradle plugin and the whole plugin system is **heavily** based on [Aliucord](https://github.com/Aliucord).
-*Go use it, it's a great mobile discord client mod!*
+The plugin system and gradle tooling are based on the
+[CloudStream](https://github.com/recloudstream) project, which in turn is based on
+[Aliucord](https://github.com/Aliucord).
