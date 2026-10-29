@@ -82,6 +82,6 @@ Schicke mir einfach die Website-URL und den gewünschten Anzeigenamen. Falls bek
 
 ## Was „automatisch“ bedeutet – und was nicht
 
-Der Build, die Versionsnummer, der Index und die Veröffentlichung laufen automatisch. Auf dem Handy muss die CloudStream-Einstellung für automatische Erweiterungsupdates einmal aktiviert sein. Das Repository kann diese lokale App-Einstellung nicht aus der Ferne ändern.
+Der Build, die Versionsnummer, der Index und die Veröffentlichung laufen automatisch. Auf dem Handy muss in CloudStream unter **Einstellungen → Updates → Erweiterungen** die Option **Automatische Plugin-Updates** einmal aktiviert sein (Menünamen können je nach Version abweichen). Das Repository kann diese lokale App-Einstellung nicht aus der Ferne ändern.
 
 Eine Website-Änderung kann ein Plugin kaputtmachen, wird aber nicht zuverlässig automatisch erkannt oder automatisch repariert. Wenn der CI-Build fehlschlägt, wird die neue Version nicht veröffentlicht; wenn die Website inhaltlich anders reagiert, braucht es einen gezielten Code-Fix und danach einen neuen Build.
