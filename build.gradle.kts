@@ -23,9 +23,9 @@ allprojects {
     }
 }
 fun Project.cloudstream(configuration: CloudstreamExtension.() -> Unit) =
-    extensions.getByName&lt;CloudstreamExtension&gt;("cloudstream").configuration()
+    (extensions.getByName("cloudstream") as CloudstreamExtension).configuration()
 fun Project.android(configuration: BaseExtension.() -> Unit) =
-    extensions.getByName&lt;BaseExtension&gt;("android").configuration()
+    (extensions.getByName("android") as BaseExtension).configuration()
 subprojects {
     apply(plugin = "com.android.library")
     apply(plugin = "kotlin-android")
@@ -44,7 +44,7 @@ subprojects {
             sourceCompatibility = JavaVersion.VERSION_1_8
             targetCompatibility = JavaVersion.VERSION_1_8
         }
-        tasks.withType&lt;KotlinJvmCompile&gt; {
+        tasks.withType(KotlinJvmCompile::class.java).configureEach {
             compilerOptions {
                 jvmTarget.set(JvmTarget.JVM_1_8)
                 freeCompilerArgs.addAll(
@@ -65,6 +65,6 @@ subprojects {
         implementation("com.github.teamnewpipe:NewPipeExtractor:v0.25.2")
     }
 }
-task&lt;Delete&gt;("clean") {
+tasks.register("clean", Delete::class.java) {
     delete(rootProject.layout.buildDirectory)
 }
