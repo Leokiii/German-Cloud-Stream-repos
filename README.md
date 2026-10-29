@@ -1,51 +1,38 @@
-# German CloudStream Repos
+# 🇩🇪 German CloudStream Anime
 
-A [CloudStream](https://github.com/recloudstream) plugin repository with German anime providers.
+Eine CloudStream-Erweiterungsquelle mit deutschsprachigen Anime-Anbietern.
 
-## Add to CloudStream
+## In CloudStream hinzufügen
 
-In CloudStream: **Settings → Extensions → Add repository**, then paste:
+Öffne **Einstellungen → Erweiterungen → Repository hinzufügen** und füge genau diese URL ein:
 
+```text
+https://raw.githubusercontent.com/Leokiii/German-Cloud-Stream-repos/master/repo.json
 ```
-https://raw.githubusercontent.com/Leokiii/German-Cloud-Stream-repos/builds/plugins.json
-```
 
-Then install the plugins you want from this repo.
+Verwende die `repo.json`-URL, nicht direkt `builds/plugins.json`. Das Manifest verweist automatisch auf die von GitHub Actions veröffentlichte Plugin-Liste.
 
-## Included providers
+## Anbieter und Sprachen
 
-| Plugin       | Site               | Notes                                   |
-|--------------|--------------------|-----------------------------------------|
-| AniWorld     | aniworld.to        | Also works via the aniworld.site mirror |
-| AnimeToast   | animetoast.cc      | Ger-Dub & Ger-Sub                        |
-| Anime-Stream | anime-stream.to    | Series & movies                          |
-| Anime-Base   | anime-base.net     | Community streams                        |
+| Plugin | Webseite | Sprachen / Hinweise |
+|---|---|---|
+| AniWorld | https://aniworld.to | Deutsch synchronisiert (Ger-Dub) und deutsch untertitelt (Ger-Sub); je nach Titel gibt es weitere Optionen. |
+| AnimeToast | https://www.animetoast.cc | Auf der Website werden Ger-Dub und Ger-Sub pro Titel angezeigt. |
+| Anime-Stream | https://anime-stream.to | Deutschsprachiger Anbieter; die tatsächlichen Sprachen und Streams sind titelabhängig und müssen im Player geprüft werden. |
+| Anime-Base | https://anime-base.net | Die Startseite meldet derzeit einen Umbau der Website. Die Funktion dieses Providers ist daher nicht bestätigt und kann eine Aktualisierung des Scrapers benötigen. |
 
-## How the build works
+Die Plugin-Metadaten verwenden `language = "de"`, damit CloudStream die Provider als deutschsprachig einordnen. Die Verfügbarkeit deutscher Synchronisation oder Untertitel hängt trotzdem von den einzelnen Titeln und der jeweiligen Website ab.
 
-- Push to `master`/`main` triggers `.github/workflows/build.yml`.
-- The workflow builds every plugin into a `.cs3` file and generates `plugins.json`
-  (via `./gradlew make makePluginsJson`), then force-pushes them to the **`builds`** branch.
-- The workflow auto-creates the `builds` branch on the first run if it doesn't exist.
-- CloudStream reads the raw `plugins.json` from the `builds` branch (the URL above).
+## Automatische Veröffentlichung
 
-## Building locally
+- Ein Push auf `master` oder `main` startet `.github/workflows/build.yml`.
+- Du kannst den Workflow auch manuell über **Actions → Build → Run workflow** starten.
+- Der Workflow erstellt die `.cs3`-Plugins und `plugins.json` und veröffentlicht sie im Branch `builds`.
+- Neue Builds erhöhen die Plugin-Version anhand der GitHub-Actions-Laufnummer.
+- In **Settings → Actions → General → Workflow permissions** muss für den Workflow **Read and write permissions** erlaubt sein, damit die Dateien im Branch `builds` veröffentlicht werden können.
 
-- Windows: `.\gradlew.bat AniWorld:make`
-- Linux & Mac: `./gradlew AniWorld:make`
+## Wichtig
 
-Replace `AniWorld` with `AnimeToast`, `AnimeStream`, or `AnimeBase` to build a specific plugin.
-New plugin folders (any directory with a `build.gradle.kts`) are picked up automatically by
-`settings.gradle.kts`.
+Ein erfolgreicher Build bestätigt, dass Plugin-Dateien erstellt wurden. Er garantiert nicht, dass jede Website erreichbar ist oder ihre HTML-Struktur, Suchfunktion und Stream-Links unverändert bleiben. Wenn ein Anbieter seine Website ändert, muss der betreffende `*Provider.kt`-Scraper möglicherweise angepasst und erneut getestet werden.
 
-## Notes on maintenance
-
-These providers scrape live websites. If a site changes its HTML layout, the relevant
-CSS selectors in that provider's `*Provider.kt` (`getMainPage`, `search`, `load`, `loadLinks`)
-may need updating. Each method is commented to make this easier.
-
-## Attribution
-
-The plugin system and gradle tooling are based on the
-[CloudStream](https://github.com/recloudstream) project, which in turn is based on
-[Aliucord](https://github.com/Aliucord).
+Die Provider sind Community-Integrationen und keine offiziellen CloudStream-Dienste. Verwende nur Inhalte, auf die du zugreifen darfst.
