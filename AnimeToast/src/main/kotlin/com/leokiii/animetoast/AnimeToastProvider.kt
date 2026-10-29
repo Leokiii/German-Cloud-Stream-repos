@@ -56,7 +56,7 @@ class AnimeToastProvider : MainAPI() {
             val match = pagePattern.find(baseUrl)
             if (match != null) {
                 val nextNumber = (match.groupValues[2].toIntOrNull() ?: 1) + page - 1
-                baseUrl.replace(pagePattern, "$1$nextNumber") + "/"
+                baseUrl.substringBeforeLast("/page/") + "/page/$nextNumber/"
             } else {
                 "$baseUrl/page/$page/"
             }
