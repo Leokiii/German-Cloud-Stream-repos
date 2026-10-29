@@ -3,17 +3,11 @@ version = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1
 
 cloudstream {
     language = "de"
-    description = "Anime-Base.net - German anime community & streams"
+    description = "Anime-Base.net - nicht verfügbar (Website geschlossen)"
     authors = listOf("Leokiii")
 
-    /**
-     * Status int as the following:
-     * 0: Down
-     * 1: Ok
-     * 2: Slow
-     * 3: Beta only
-     * */
-    status = 1
+    // Provider remains listed for reference; the website currently announces closure.
+    status = 0
 
     tvTypes = listOf(
         "AnimeMovie",
@@ -22,4 +16,3 @@ cloudstream {
     )
 
     iconUrl = "https://www.google.com/s2/favicons?domain=anime-base.net&sz=%size%"
-}
