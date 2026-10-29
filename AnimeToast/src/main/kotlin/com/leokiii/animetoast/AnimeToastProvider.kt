@@ -114,7 +114,7 @@ class AnimeToastProvider : MainAPI() {
                     val href = fixUrlNull(el.attr("href")) ?: return@mapNotNull null
                     val title = el.attr("title").ifBlank {
                         el.selectFirst("img")?.attr("alt").orEmpty()
-                    }.trim()
+                    }.ifBlank { el.text() }.trim()
                     if (title.isEmpty()) return@mapNotNull null
                     val poster = el.selectFirst("img")?.let { posterFromImage(it) }
                     newAnimeSearchResponse(title, href, TvType.Anime) { this.posterUrl = poster }
