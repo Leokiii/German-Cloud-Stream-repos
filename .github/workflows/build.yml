@@ -36,24 +36,14 @@ jobs:
           set -euo pipefail
           chmod +x ./gradlew
           ./gradlew --no-daemon --stacktrace make makePluginsJson
-
-          test -s build/plugins.json || {
-            echo "::error::Gradle did not generate build/plugins.json."
-            exit 1
-          }
-
+          test -s build/plugins.json
           publish_dir="$RUNNER_TEMP/cloudstream-publish"
           mkdir -p "$publish_dir"
-
-          while IFS= read -r -d '' artifact; do
-            cp "$artifact" "$publish_dir/"
-          done 1)
-
+          find . -type f -path '*/build/*.cs3' -exec cp {} "$publish_dir/" \;
           if ! find "$publish_dir" -maxdepth 1 -type f -name '*.cs3' -print -quit | grep -q .; then
             echo "::error::Gradle did not produce any .cs3 plugin files."
             exit 1
           fi
-
           cp build/plugins.json "$publish_dir/plugins.json"
           test -s "$publish_dir/plugins.json"
 
@@ -63,16 +53,9 @@ jobs:
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
           git switch --orphan cloudstream-publish
           git clean -fdx
           cp -a "$RUNNER_TEMP/cloudstream-publish/." .
           git add -A
-
-          if git diff --cached --quiet; then
-            echo "No published files changed."
-            exit 0
-          fi
-
           git commit -m "Build $GITHUB_SHA"
           git push --force origin HEAD:builds
