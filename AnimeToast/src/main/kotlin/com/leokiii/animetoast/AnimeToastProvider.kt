@@ -119,35 +119,32 @@ class AnimeToastProvider : MainAPI() {
         val plot = document.selectFirst("div.entry-content p, div.post-content p")?.text()
         val tags = document.select("a[rel=tag], a[rel=\"category tag\"]").map { it.text() }.distinct()
 
-        // AnimeToast has one tab per mirror (Voe, FMoon, VidM, Mp4Upload).
-        // Each tab repeats the same episode label, so don't turn four mirrors for
-        // "Ep. 1" into four separate CloudStream episodes. Keep the first mirror URL
-        // for each distinct episode number; loadLinks resolves that selected mirror.
-        val episodeByNumber = linkedMapOf<Int, String>()
+        // The tab links are mirror choices (for example ?link=0..3) for this
+        // post, not separate episodes. Keep the page URL as episode data so
+        // loadLinks can inspect every mirror, including mirrors other than link=0.
         val tabLinks = document.select("div[id^=multi_link_tab] a[href], div.tab-content .tab-pane a[href]")
-        tabLinks.forEach { anchor ->
-            val link = fixUrlNull(anchor.attr("href")) ?: return@forEach
-            val label = anchor.text().trim()
-            val number = Regex("(?:ep(?:isode)?|folge)\\s*\\.?\\s*(\\d+)", RegexOption.IGNORE_CASE)
-                .find(label)?.groupValues?.get(1)?.toIntOrNull()
-            if (number != null) episodeByNumber.putIfAbsent(number, link)
-        }
-        if (episodeByNumber.isEmpty() && tabLinks.isNotEmpty()) {
-            fixUrlNull(tabLinks.first().attr("href"))?.let { episodeByNumber[1] = it }
-        }
-
-        val episodes = episodeByNumber.map { (number, link) ->
-            newEpisode(link) {
-                this.episode = number
-                this.name = "Folge $number"
+        val episodeNumber = tabLinks.asSequence()
+            .map { it.text().trim() }
+            .mapNotNull { label ->
+                Regex("(?:ep(?:isode)?|folge)\\s*\\.?\\s*(\\d+)", RegexOption.IGNORE_CASE)
+                    .find(label)?.groupValues?.get(1)?.toIntOrNull()
             }
-        }.ifEmpty { listOf(newEpisode(url) { this.episode = 1 }) }
+            .firstOrNull() ?: 1
+        val episodes = listOf(newEpisode(url) {
+            this.episode = episodeNumber
+            this.name = "Folge $episodeNumber"
+        })
 
         return newAnimeLoadResponse(title, url, TvType.Anime) {
             this.posterUrl = poster
             this.plot = plot
             this.tags = tags
-            addEpisodes(DubStatus.Subbed, episodes)
+            val dubStatus = if (title.contains("dub", ignoreCase = true)) {
+                DubStatus.Dubbed
+            } else {
+                DubStatus.Subbed
+            }
+            addEpisodes(dubStatus, episodes)
         }
     }
 
@@ -157,18 +154,64 @@ class AnimeToastProvider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val document = app.get(data).document
+        val pageUrl = fixUrlNull(data) ?: data
+        val document = try {
+            app.get(pageUrl, referer = mainUrl).document
+        } catch (_: Exception) {
+            return false
+        }
         var found = false
         val seen = HashSet<String>()
-        val candidates = mutableListOf<String>()
-        document.select("#player-embed a[href]").forEach { candidates.add(it.attr("abs:href")) }
-        document.select("#player-embed iframe[src]").forEach { candidates.add(it.attr("abs:src")) }
-        document.select("div.tab-pane iframe[src]").forEach { candidates.add(it.attr("abs:src")) }
-        for (raw in candidates) {
-            val link = raw.trim()
-            if (link.isEmpty() || !seen.add(link)) continue
-            if (loadExtractor(link, mainUrl, subtitleCallback, callback)) found = true
+
+        fun cleanUrl(value: String): String? {
+            val trimmed = value.trim()
+            if (trimmed.isEmpty() || trimmed == "#") return null
+            return fixUrlNull(trimmed)
         }
+
+        // Some mirrors are embedded immediately; others only appear after loading
+        // their ?link=N page. Inspect both paths rather than assuming link=0 works.
+        val directCandidates = document.select(
+            "#player-embed a[href], #player-embed iframe[src], div.tab-pane iframe[src]"
+        ).mapNotNull { element ->
+            cleanUrl(element.attr("abs:src").ifBlank { element.attr("abs:href") })
+        }.distinct()
+
+        for (candidate in directCandidates) {
+            if (!seen.add(candidate)) continue
+            try {
+                if (loadExtractor(candidate, pageUrl, subtitleCallback, callback)) found = true
+            } catch (_: Exception) {
+                // Continue so a dead mirror does not block the remaining choices.
+            }
+        }
+
+        val mirrorPages = document.select(
+            "div.tab-content div.tab-pane a[href], div[id^=multi_link_tab] a[href]"
+        ).mapNotNull { cleanUrl(it.attr("abs:href")) }.distinct()
+
+        for (mirrorPage in mirrorPages) {
+            try {
+                val mirrorDocument = app.get(mirrorPage, referer = pageUrl).document
+                val candidates = mirrorDocument.select(
+                    "#player-embed a[href], #player-embed iframe[src], div.tab-pane iframe[src]"
+                ).mapNotNull { element ->
+                    cleanUrl(element.attr("abs:src").ifBlank { element.attr("abs:href") })
+                }.distinct()
+
+                for (candidate in candidates) {
+                    if (!seen.add(candidate)) continue
+                    try {
+                        if (loadExtractor(candidate, mirrorPage, subtitleCallback, callback)) found = true
+                    } catch (_: Exception) {
+                        // Keep trying the other hoster tabs.
+                    }
+                }
+            } catch (_: Exception) {
+                // One unavailable mirror should not fail the whole episode.
+            }
+        }
+
         return found
     }
 }
