@@ -34,8 +34,6 @@ class AnimeStreamProvider : MainAPI() {
         TvType.OVA,
     )
 
-    // The current homepage catalog is served from /backup. The two catalog pages
-    // provide a much larger searchable/browsable list, with page= pagination.
     override val mainPage = mainPageOf(
         "$mainUrl/backup" to "Neu auf Anime-Stream",
         "$mainUrl/alle-serien" to "Alle Anime-Serien",
@@ -54,12 +52,9 @@ class AnimeStreamProvider : MainAPI() {
             baseTarget
         }
         val document = app.get(target).document
-
-        // Parse actual title links rather than requiring the old .panel markup.
         val home = document.select("a[href*='/anime-serien/'], a[href*='/anime-filme/']")
             .mapNotNull { it.toSearchResult() }
             .distinctBy { it.url }
-
         val nextPage = page + 1
         val hasNext = isCatalogPage && document.select(
             "a[href*='page=$nextPage'], a[rel=next], .pagination a.next, a.next.page-numbers"
@@ -72,7 +67,6 @@ class AnimeStreamProvider : MainAPI() {
             selectFirst("a[href*='/anime-serien/'], a[href*='/anime-filme/']") ?: return null
         val href = fixUrlNull(anchor.attr("href")) ?: return null
         if (!href.contains("/anime-serien/") && !href.contains("/anime-filme/")) return null
-
         val card = anchor.closest("article, li, .card, .anime-card, .series-card, .anime-item, .item, .video-item, .panel")
             ?: anchor.parent() ?: anchor
         val image = card.selectFirst("img") ?: anchor.selectFirst("img")
@@ -104,7 +98,9 @@ class AnimeStreamProvider : MainAPI() {
 
     override suspend fun search(query: String): List<SearchResponse> {
         val encoded = URLEncoder.encode(query, "UTF-8")
+        // The live site's search form submits to /search.php?q=... (not ?s= or /suche).
         val targets = listOf(
+            "$mainUrl/search.php?q=$encoded",
             "$mainUrl/?q=$encoded",
             "$mainUrl/?s=$encoded",
             "$mainUrl/suche?q=$encoded"
@@ -135,7 +131,7 @@ class AnimeStreamProvider : MainAPI() {
 
     override suspend fun load(url: String): LoadResponse {
         val document = app.get(url).document
-        val title = document.selectFirst(".series-info .heading")?.text()?.trim()
+        val title = document.selectFirst(".series-info h1")?.text()?.trim()
             ?: document.selectFirst("h1")?.text()?.trim()
             ?: "Anime-Stream"
         val poster = document.selectFirst("meta[property=og:image], meta[name=twitter:image]")?.attr("content")
@@ -151,32 +147,34 @@ class AnimeStreamProvider : MainAPI() {
         val year = document.selectFirst(".series-meta .year")?.text()
             ?.let { Regex("(\\d{4})").find(it)?.groupValues?.get(1)?.toIntOrNull() }
 
-        val episodeLinks = document.select(".episode-panel .episode-link[href]")
-            .mapNotNull { anchor ->
-                val link = fixUrlNull(anchor.attr("href")) ?: return@mapNotNull null
-                val panel = anchor.closest(".episode-panel") ?: anchor
-                val label = panel.selectFirst(".episode-number")?.text()
-                    ?.ifBlank { anchor.text() }
-                    ?: anchor.text()
-                val episodeNumber = Regex("(\\d+)").find(label)?.groupValues?.get(1)?.toIntOrNull()
-                val seasonText = anchor.closest(".season-block")
-                    ?.selectFirst(".section-header")?.text().orEmpty()
-                val seasonNumber = Regex("STAFFEL\\s*(\\d+)", RegexOption.IGNORE_CASE)
-                    .find(seasonText)?.groupValues?.get(1)?.toIntOrNull()
-                newEpisode(link) {
-                    this.name = label.trim().ifBlank { "Folge " + (episodeNumber ?: 1) }
-                    this.episode = episodeNumber
-                    this.season = seasonNumber
-                }
+        // The live series page fills #episodes-N with JavaScript. Jsoup/CloudStream
+        // receives the server HTML before that script runs, so the old episode selector
+        // always missed and incorrectly exposed the series page itself as "Episode 1".
+        // Keep real statically-rendered episode links when a site version provides them.
+        val episodeLinks = document.select(
+            ".episode-panel .episode-link[href], .episode-link[href*='/episode-'], " +
+                "a[href*='/episode/'], a[href*='/episode-']"
+        ).mapNotNull { anchor ->
+            val link = fixUrlNull(anchor.attr("href")) ?: return@mapNotNull null
+            val label = anchor.text().trim().ifBlank { "Folge" }
+            val episodeNumber = Regex("(\\d+)").find(label)?.groupValues?.get(1)?.toIntOrNull()
+                ?: Regex("episode[-/](\\d+)", RegexOption.IGNORE_CASE)
+                    .find(link)?.groupValues?.get(1)?.toIntOrNull()
+            val seasonNumber = Regex("staffel[-/](\\d+)", RegexOption.IGNORE_CASE)
+                .find(link)?.groupValues?.get(1)?.toIntOrNull()
+            newEpisode(link) {
+                this.name = label
+                this.episode = episodeNumber
+                this.season = seasonNumber
             }
-
-        val episodes = if (episodeLinks.isNotEmpty()) {
-            episodeLinks
-        } else {
-            listOf(newEpisode(url) { this.episode = 1 })
-        }
+        }.distinctBy { it.data }
 
         val type = if (url.contains("/anime-filme/")) TvType.AnimeMovie else TvType.Anime
+        val episodes = when {
+            episodeLinks.isNotEmpty() -> episodeLinks
+            type == TvType.AnimeMovie -> listOf(newEpisode(url) { this.episode = 1 })
+            else -> emptyList()
+        }
         return newAnimeLoadResponse(title, url, type) {
             this.posterUrl = poster
             this.plot = plot
@@ -198,27 +196,19 @@ class AnimeStreamProvider : MainAPI() {
         } catch (_: Exception) {
             null
         }
-
         val resolvedUrl = response?.url ?: fixUrlNull(data) ?: data
-        if (loadExtractor(resolvedUrl, mainUrl, subtitleCallback, callback)) {
-            found = true
-        }
-
+        if (loadExtractor(resolvedUrl, mainUrl, subtitleCallback, callback)) found = true
         val document = response?.document ?: try {
             app.get(resolvedUrl, referer = mainUrl).document
         } catch (_: Exception) {
             return found
         }
-
         val candidates = document.select("iframe[src], video source[src], a[href*='player'], .hoster a[href]")
             .map { it.attr("abs:src").ifBlank { it.attr("abs:href") } }
             .filter { it.isNotBlank() }
             .distinct()
-
         for (link in candidates) {
-            if (loadExtractor(link, resolvedUrl, subtitleCallback, callback)) {
-                found = true
-            }
+            if (loadExtractor(link, resolvedUrl, subtitleCallback, callback)) found = true
         }
         return found
     }
