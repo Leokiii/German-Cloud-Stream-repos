@@ -25,8 +25,7 @@ import org.jsoup.nodes.Element
 
 class AniWorldProvider : MainAPI() {
     private val jsonMapper = ObjectMapper()
-    // aniworld.site is a mirror of aniworld.to and shares the same structure.
-    // If aniworld.to is ever unreachable, switch this to "https://aniworld.site".
+
     override var mainUrl = "https://aniworld.to"
     override var name = "AniWorld"
     override val hasMainPage = true
@@ -50,7 +49,6 @@ class AniWorldProvider : MainAPI() {
         request: MainPageRequest
     ): HomePageResponse {
         val document = app.get(request.data).document
-        // Anime entries everywhere on the site are links to /anime/stream/{slug}
         val home = document.select("a[href*=/anime/stream/]")
             .mapNotNull { it.toSearchResult() }
             .distinctBy { it.url }
@@ -59,7 +57,6 @@ class AniWorldProvider : MainAPI() {
 
     private fun Element.toSearchResult(): SearchResponse? {
         val href = this.attr("href")
-        // Only top-level anime pages, not season/episode sub-pages
         if (!href.contains("/anime/stream/")) return null
         val slug = href.substringAfter("/anime/stream/").trim('/')
         if (slug.isEmpty() || slug.contains("/")) return null
@@ -88,8 +85,7 @@ class AniWorldProvider : MainAPI() {
         }
     }
 
-    override suspend fun search(query: String): List/SearchResponse> {
-        // aniworld exposes a JSON search endpoint
+    override suspend fun search(query: String) = run {
         val response = app.post(
             "$mainUrl/ajax/search",
             data = mapOf("keyword" to query),
@@ -98,38 +94,36 @@ class AniWorldProvider : MainAPI() {
         ).text
 
         val results = parseSearchJson(response)
-        if (results.isNotEmpty()) return results
+        if (results.isNotEmpty()) return@run results
 
-        // Fallback: scrape the HTML search page
         val document = app.get("$mainUrl/search?q=$query").document
-        return document.select("a[href*=/anime/stream/]")
+        document.select("a[href*=/anime/stream/]")
             .mapNotNull { it.toSearchResult() }
             .distinctBy { it.url }
     }
 
-    private fun parseSearchJson(json: String): List/SearchResponse> {
-        // Use Jackson's tree API here instead of CloudStream's inline JSON helper.
-        // This keeps the provider compatible with the repository's JVM bytecode target.
+    private fun parseSearchJson(json: String) = run {
         val root = try {
             jsonMapper.readTree(json)
         } catch (_: Exception) {
-            return emptyList()
+            null
         }
-        if (!root.isArray) return emptyList()
+        if (root == null || !root.isArray) {
+            emptyList()
+        } else {
+            root.mapNotNull { item ->
+                val link = item.path("link").asText("")
+                if (!link.contains("/anime/stream/")) return@mapNotNull null
 
-        return root.mapNotNull { item ->
-            val link = item.path("link").asText("")
-            if (!link.contains("/anime/stream/")) return@mapNotNull null
+                val slug = link.substringAfter("/anime/stream/").trim('/')
+                if (slug.isEmpty() || slug.contains("/")) return@mapNotNull null
 
-            // Only top-level series links, not seasons or episodes.
-            val slug = link.substringAfter("/anime/stream/").trim('/')
-            if (slug.isEmpty() || slug.contains("/")) return@mapNotNull null
+                val title = Jsoup.parse(item.path("title").asText("")).text().trim()
+                if (title.isEmpty()) return@mapNotNull null
 
-            val title = Jsoup.parse(item.path("title").asText("")).text().trim()
-            if (title.isEmpty()) return@mapNotNull null
-
-            newAnimeSearchResponse(title, fixUrl(link), TvType.Anime)
-        }.distinctBy { it.url }
+                newAnimeSearchResponse(title, fixUrl(link), TvType.Anime)
+            }.distinctBy { it.url }
+        }
     }
 
     override suspend fun load(url: String): LoadResponse {
@@ -154,36 +148,32 @@ class AniWorldProvider : MainAPI() {
             ?: document.selectFirst("div.series-title small span")?.text()
         val year = Regex("(\\d{4})").find(yearText ?: "")?.groupValues?.get(1)?.toIntOrNull()
 
-        // Collect every season link, then every episode within each season.
-        val seasonLinks = document.select("div#stream > ul:first-child li a")
+        val seasonLinks = document.select("div#stream ul:first-child li a")
             .map { it.attr("href") }
             .filter { it.contains("/staffel-") || it.contains("/filme") }
             .map { fixUrl(it) }
             .distinct()
             .ifEmpty { listOf(url) }
 
-        val episodes = mutableListOf/Episode>()
-        for (seasonUrl in seasonLinks) {
+        val episodes = seasonLinks.flatMap { seasonUrl ->
             val seasonDoc = if (seasonUrl == url) document else app.get(seasonUrl).document
             val seasonNumber = Regex("staffel-(\\d+)")
                 .find(seasonUrl)?.groupValues?.get(1)?.toIntOrNull()
 
-            seasonDoc.select("table.seasonEpisodesList tbody tr").forEach { row ->
+            seasonDoc.select("table.seasonEpisodesList tbody tr").mapNotNull { row ->
                 val epLink = row.selectFirst("a[href*=/episode-]")?.attr("href")
                     ?: row.selectFirst("td a")?.attr("href")
-                    ?: return@forEach
+                    ?: return@mapNotNull null
                 val epNum = Regex("episode-(\\d+)")
                     .find(epLink)?.groupValues?.get(1)?.toIntOrNull()
                 val epTitle = row.selectFirst("td.seasonEpisodeTitle a span")?.text()
                     ?: row.selectFirst("td.seasonEpisodeTitle")?.text()
 
-                episodes.add(
-                    newEpisode(fixUrl(epLink)) {
-                        this.name = epTitle
-                        this.season = seasonNumber
-                        this.episode = epNum
-                    }
-                )
+                newEpisode(fixUrl(epLink)) {
+                    this.name = epTitle
+                    this.season = seasonNumber
+                    this.episode = epNum
+                }
             }
         }
 
@@ -205,18 +195,16 @@ class AniWorldProvider : MainAPI() {
         val document = app.get(data).document
         var found = false
 
-        // Each hoster is a list item that links to a /redirect/{id} which 302s to the real host.
         document.select("div.hosterSiteVideo ul li").forEach { li ->
             val redirect = li.selectFirst("a.watchEpisode")?.attr("href")
                 ?: li.attr("data-link-target")
             if (redirect.isNullOrBlank()) return@forEach
 
-            // Follow the redirect to resolve the actual hosting provider URL.
             val hostUrl = try {
                 app.get(fixUrl(redirect), allowRedirects = false)
                     .headers["location"]
                     ?: app.get(fixUrl(redirect)).url
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 fixUrl(redirect)
             }
 
