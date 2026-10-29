@@ -1,12 +1,11 @@
 package com.leokiii.animetoast
 
+import com.lagradost.cloudstream3.plugins.BasePlugin
 import com.lagradost.cloudstream3.plugins.CloudstreamPlugin
-import com.lagradost.cloudstream3.plugins.Plugin
-import android.content.Context
 
 @CloudstreamPlugin
-class AnimeToastPlugin : Plugin() {
-    override fun load(context: Context) {
+class AnimeToastPlugin : BasePlugin() {
+    override fun load() {
         registerMainAPI(AnimeToastProvider())
     }
 }
