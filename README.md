@@ -28,7 +28,7 @@ Die Plugin-Metadaten verwenden `language = "de"`, damit CloudStream die Provider
 **Du musst installierte Plugins bei einem normalen Update nicht löschen oder neu installieren.** Dieses Repository veröffentlicht höhere Plugin-Versionen, damit CloudStream die installierten Plugins als veraltet erkennt.
 
 1. Füge das Repository **einmalig** mit der URL oben hinzu.
-2. Aktiviere in CloudStream unter **Einstellungen → Erweiterungen** die Option für **automatische Erweiterungs-/Plugin-Updates** (die genaue Bezeichnung hängt von deiner CloudStream-Version ab).
+2. Aktiviere in CloudStream unter **Einstellungen → Updates** im Abschnitt **Erweiterungen** die Option **Automatische Plugin-Updates** (die Menübezeichnung kann je nach CloudStream-Version abweichen).
 3. Beim ersten Wechsel auf die automatische Aktualisierung nutze einmal **Repository aktualisieren** bzw. **Alle Erweiterungen aktualisieren**. Danach aktualisiert CloudStream installierte Erweiterungen anhand der höheren Versionen, wenn es die Repository-Daten erneut abruft.
 
 Die Auto-Update-Einstellung ist lokal in der CloudStream-App gespeichert und kann nicht per GitHub-Repository aus der Ferne aktiviert werden. Ohne diese Einstellung kann ein neues Plugin zwar veröffentlicht sein, die App übernimmt es aber nicht automatisch.
