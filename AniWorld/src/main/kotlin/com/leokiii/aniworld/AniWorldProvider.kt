@@ -17,13 +17,14 @@ import com.lagradost.cloudstream3.newAnimeLoadResponse
 import com.lagradost.cloudstream3.newAnimeSearchResponse
 import com.lagradost.cloudstream3.newEpisode
 import com.lagradost.cloudstream3.newHomePageResponse
-import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.loadExtractor
-import com.fasterxml.jackson.annotation.JsonProperty
+import com.fasterxml.jackson.databind.ObjectMapper
+import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
 
 class AniWorldProvider : MainAPI() {
+    private val jsonMapper = ObjectMapper()
     // aniworld.site is a mirror of aniworld.to and shares the same structure.
     // If aniworld.to is ever unreachable, switch this to "https://aniworld.site".
     override var mainUrl = "https://aniworld.to"
@@ -87,7 +88,7 @@ class AniWorldProvider : MainAPI() {
         }
     }
 
-    override suspend fun search(query: String): List<SearchResponse> {
+    override suspend fun search(query: String): List/SearchResponse> {
         // aniworld exposes a JSON search endpoint
         val response = app.post(
             "$mainUrl/ajax/search",
@@ -106,26 +107,30 @@ class AniWorldProvider : MainAPI() {
             .distinctBy { it.url }
     }
 
-    private suspend fun parseSearchJson(json: String): List<SearchResponse> {
-        // Response is a JSON array of objects: { "title": "...", "link": "/anime/stream/slug", ... }
-        val items = tryParseJson<List<SearchItem>>(json) ?: return emptyList()
-        return items.filter { it.link?.contains("/anime/stream/") == true }
-            .mapNotNull { item ->
-                val link = item.link ?: return@mapNotNull null
-                // Only top-level series links
-                val slug = link.substringAfter("/anime/stream/").trim('/')
-                if (slug.isEmpty() || slug.contains("/")) return@mapNotNull null
-                val title = item.title?.replace(Regex("<[^>]*>"), "")?.trim() ?: return@mapNotNull null
-                newAnimeSearchResponse(title, fixUrl(link), TvType.Anime)
-            }
-            .distinctBy { it.url }
-    }
+    private fun parseSearchJson(json: String): List/SearchResponse> {
+        // Use Jackson's tree API here instead of CloudStream's inline JSON helper.
+        // This keeps the provider compatible with the repository's JVM bytecode target.
+        val root = try {
+            jsonMapper.readTree(json)
+        } catch (_: Exception) {
+            return emptyList()
+        }
+        if (!root.isArray) return emptyList()
 
-    data class SearchItem(
-        @JsonProperty("title") val title: String? = null,
-        @JsonProperty("link") val link: String? = null,
-        @JsonProperty("description") val description: String? = null,
-    )
+        return root.mapNotNull { item ->
+            val link = item.path("link").asText("")
+            if (!link.contains("/anime/stream/")) return@mapNotNull null
+
+            // Only top-level series links, not seasons or episodes.
+            val slug = link.substringAfter("/anime/stream/").trim('/')
+            if (slug.isEmpty() || slug.contains("/")) return@mapNotNull null
+
+            val title = Jsoup.parse(item.path("title").asText("")).text().trim()
+            if (title.isEmpty()) return@mapNotNull null
+
+            newAnimeSearchResponse(title, fixUrl(link), TvType.Anime)
+        }.distinctBy { it.url }
+    }
 
     override suspend fun load(url: String): LoadResponse {
         val document = app.get(url).document
@@ -157,7 +162,7 @@ class AniWorldProvider : MainAPI() {
             .distinct()
             .ifEmpty { listOf(url) }
 
-        val episodes = mutableListOf<Episode>()
+        val episodes = mutableListOf/Episode>()
         for (seasonUrl in seasonLinks) {
             val seasonDoc = if (seasonUrl == url) document else app.get(seasonUrl).document
             val seasonNumber = Regex("staffel-(\\d+)")
