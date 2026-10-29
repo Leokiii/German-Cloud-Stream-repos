@@ -8,9 +8,11 @@ on:
 permissions:
   contents: write
 
+# Do not cancel a build while it is creating/publishing the builds branch.
+# GitHub will keep the newest pending run, which publishes the latest master/main commit.
 concurrency:
   group: cloudstream-build
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   build:
@@ -46,6 +48,71 @@ jobs:
           fi
           cp build/plugins.json "$publish_dir/plugins.json"
           test -s "$publish_dir/plugins.json"
+
+          # Validate the index and every referenced plugin before publishing.
+          # This prevents a partial/stale plugins.json from replacing the live builds branch.
+          python3 - "$publish_dir" <<'PY'
+          import hashlib
+          import json
+          import pathlib
+          import sys
+          from urllib.parse import urlparse
+
+          publish_dir = pathlib.Path(sys.argv[1])
+          plugins_path = publish_dir / "plugins.json"
+          try:
+              plugins = json.loads(plugins_path.read_text(encoding="utf-8"))
+          except Exception as exc:
+              raise SystemExit(f"::error::plugins.json is invalid JSON: {exc}")
+
+          if not isinstance(plugins, list) or not plugins:
+              raise SystemExit("::error::plugins.json must contain a non-empty plugin list.")
+
+          seen = set()
+          referenced_files = set()
+          for plugin in plugins:
+              if not isinstance(plugin, dict):
+                  raise SystemExit("::error::plugins.json contains a non-object entry.")
+
+              internal_name = plugin.get("internalName") or plugin.get("name")
+              url = plugin.get("url")
+              version = plugin.get("version")
+              if not internal_name or not isinstance(url, str) or not url.strip():
+                  raise SystemExit(f"::error::Plugin entry is missing internalName/name or url: {plugin!r}")
+              if internal_name in seen:
+                  raise SystemExit(f"::error::Duplicate plugin internalName: {internal_name}")
+              seen.add(internal_name)
+
+              if not isinstance(version, int) or version < 1:
+                  raise SystemExit(f"::error::Invalid plugin version for {internal_name}: {version!r}")
+
+              filename = pathlib.PurePosixPath(urlparse(url).path).name
+              if not filename.endswith(".cs3"):
+                  raise SystemExit(f"::error::Plugin URL does not end in .cs3 for {internal_name}: {url}")
+              artifact = publish_dir / filename
+              if not artifact.is_file() or artifact.stat().st_size == 0:
+                  raise SystemExit(f"::error::Missing or empty artifact referenced by {internal_name}: {filename}")
+              referenced_files.add(filename)
+
+              expected_size = plugin.get("fileSize")
+              if isinstance(expected_size, int) and expected_size != artifact.stat().st_size:
+                  raise SystemExit(
+                      f"::error::File size mismatch for {filename}: manifest={expected_size}, actual={artifact.stat().st_size}"
+                  )
+
+              expected_hash = plugin.get("fileHash")
+              if isinstance(expected_hash, str) and expected_hash.startswith("sha256-"):
+                  actual_hash = "sha256-" + hashlib.sha256(artifact.read_bytes()).hexdigest()
+                  if actual_hash != expected_hash:
+                      raise SystemExit(f"::error::SHA-256 mismatch for {filename}: manifest hash is stale")
+
+          artifact_files = {p.name for p in publish_dir.glob("*.cs3") if p.is_file()}
+          unindexed = artifact_files - referenced_files
+          if unindexed:
+              raise SystemExit(f"::error::Built plugins are missing from plugins.json: {', '.join(sorted(unindexed))}")
+
+          print(f"Validated {len(plugins)} plugin entries and {len(artifact_files)} .cs3 artifacts.")
+          PY
 
       - name: Publish builds branch
         shell: bash
