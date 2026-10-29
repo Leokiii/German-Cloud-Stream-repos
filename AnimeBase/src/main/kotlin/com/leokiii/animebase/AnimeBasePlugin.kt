@@ -1,11 +1,11 @@
-package com.leokiii.aniworld
+package com.leokiii.animebase
 
 import com.lagradost.cloudstream3.plugins.BasePlugin
 import com.lagradost.cloudstream3.plugins.CloudstreamPlugin
 
 @CloudstreamPlugin
-class AniWorldPlugin : BasePlugin() {
+class AnimeBasePlugin : BasePlugin() {
     override fun load() {
-        registerMainAPI(AniWorldProvider())
+        registerMainAPI(AnimeBaseProvider())
     }
 }
