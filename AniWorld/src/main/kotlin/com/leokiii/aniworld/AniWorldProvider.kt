@@ -66,9 +66,8 @@ class AniWorldProvider : MainAPI() {
         }.trim()
         if (title.isEmpty()) return null
 
-        val posterUrl = fixPosterUrl(
-            this.selectFirst("img")?.let { it.attr("data-src").ifBlank { it.attr("src") } }
-        )
+        val posterUrl = posterFromElement(this)
+
 
         return newAnimeSearchResponse(title, fixUrl(href), TvType.Anime) {
             this.posterUrl = posterUrl
@@ -77,12 +76,26 @@ class AniWorldProvider : MainAPI() {
 
     private fun fixPosterUrl(url: String?): String? {
         if (url.isNullOrBlank()) return null
+        val clean = url.trim()
+        if (clean.isEmpty() || clean.startsWith("data:image", ignoreCase = true)) return null
         return when {
-            url.startsWith("http") -> url
-            url.startsWith("//") -> "https:$url"
-            url.startsWith("/") -> "$mainUrl$url"
-            else -> "$mainUrl/$url"
+            clean.startsWith("http://", ignoreCase = true) || clean.startsWith("https://", ignoreCase = true) -> clean
+            clean.startsWith("//") -> "https:$clean"
+            clean.startsWith("/") -> "$mainUrl$clean"
+            else -> "$mainUrl/$clean"
         }
+    }
+
+    private fun posterFromElement(element: Element): String? {
+        val image = element.selectFirst("img") ?: return null
+        val raw = listOf(
+            "data-src", "data-lazy-src", "data-original", "data-original-src",
+            "data-image", "data-poster", "data-thumb", "srcset", "src"
+        ).asSequence()
+            .map { image.attr(it).trim() }
+            .firstOrNull { it.isNotBlank() && !it.startsWith("data:image", ignoreCase = true) }
+            ?: return null
+        return fixPosterUrl(raw.substringBefore(",").trim().substringBefore(" ").trim())
     }
 
     override suspend fun search(query: String) = run {
@@ -96,7 +109,8 @@ class AniWorldProvider : MainAPI() {
         val results = parseSearchJson(response)
         if (results.isNotEmpty()) return@run results
 
-        val document = app.get("$mainUrl/search?q=$query").document
+        val encoded = java.net.URLEncoder.encode(query, "UTF-8")
+        val document = app.get("$mainUrl/search?q=$encoded").document
         document.select("a[href*=/anime/stream/]")
             .mapNotNull { it.toSearchResult() }
             .distinctBy { it.url }
@@ -121,7 +135,14 @@ class AniWorldProvider : MainAPI() {
                 val title = Jsoup.parse(item.path("title").asText("")).text().trim()
                 if (title.isEmpty()) return@mapNotNull null
 
-                newAnimeSearchResponse(title, fixUrl(link), TvType.Anime)
+                val poster = sequenceOf("image", "poster", "image_url", "cover")
+                    .map { item.path(it).asText("") }
+                    .firstOrNull { it.isNotBlank() }
+                    ?.let { fixPosterUrl(it) }
+
+                newAnimeSearchResponse(title, fixUrl(link), TvType.Anime) {
+                    this.posterUrl = poster
+                }
             }.distinctBy { it.url }
         }
     }
@@ -134,10 +155,10 @@ class AniWorldProvider : MainAPI() {
             ?: document.selectFirst("h1")?.text()
             ?: "AniWorld"
 
-        val poster = fixPosterUrl(
-            document.selectFirst("div.seriesCoverBox img")
-                ?.let { it.attr("data-src").ifBlank { it.attr("src") } }
-        )
+        val poster = document.selectFirst("meta[property=og:image], meta[name=twitter:image]")
+            ?.attr("content")?.let { fixPosterUrl(it) }
+            ?: document.selectFirst("div.seriesCoverBox img, .seriesCoverBox img, .series-cover img")
+                ?.let { posterFromElement(it.parent() ?: it) }
 
         val plot = document.selectFirst("p.seri_des")?.attr("data-full-description")
             ?: document.selectFirst("p.seri_des")?.text()
