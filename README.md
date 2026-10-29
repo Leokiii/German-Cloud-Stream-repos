@@ -23,16 +23,30 @@ Verwende die `repo.json`-URL, nicht direkt `builds/plugins.json`. Das Manifest v
 
 Die Plugin-Metadaten verwenden `language = "de"`, damit CloudStream die Provider als deutschsprachig einordnen. Die Verfügbarkeit deutscher Synchronisation oder Untertitel hängt trotzdem von den einzelnen Titeln und der jeweiligen Website ab.
 
-## Automatische Veröffentlichung
+## Automatische Updates in CloudStream
 
-- Ein Push auf `master` oder `main` startet `.github/workflows/build.yml`.
-- Du kannst den Workflow auch manuell über **Actions → Build → Run workflow** starten.
-- Der Workflow erstellt die `.cs3`-Plugins und `plugins.json` und veröffentlicht sie im Branch `builds`.
-- Neue Builds erhöhen die Plugin-Version anhand der GitHub-Actions-Laufnummer.
-- In **Settings → Actions → General → Workflow permissions** muss für den Workflow **Read and write permissions** erlaubt sein, damit die Dateien im Branch `builds` veröffentlicht werden können.
+**Du musst installierte Plugins bei einem normalen Update nicht löschen oder neu installieren.** Dieses Repository veröffentlicht höhere Plugin-Versionen, damit CloudStream die installierten Plugins als veraltet erkennt.
 
-## Wichtig
+1. Füge das Repository **einmalig** mit der URL oben hinzu.
+2. Aktiviere in CloudStream unter **Einstellungen → Erweiterungen** die Option für **automatische Erweiterungs-/Plugin-Updates** (die genaue Bezeichnung hängt von deiner CloudStream-Version ab).
+3. Beim ersten Wechsel auf die automatische Aktualisierung nutze einmal **Repository aktualisieren** bzw. **Alle Erweiterungen aktualisieren**. Danach aktualisiert CloudStream installierte Erweiterungen anhand der höheren Versionen, wenn es die Repository-Daten erneut abruft.
 
-Ein erfolgreicher Build bestätigt, dass Plugin-Dateien erstellt wurden. Er garantiert nicht, dass jede Website erreichbar ist oder ihre HTML-Struktur, Suchfunktion und Stream-Links unverändert bleiben. Wenn ein Anbieter seine Website ändert, muss der betreffende `*Provider.kt`-Scraper möglicherweise angepasst und erneut getestet werden.
+Die Auto-Update-Einstellung ist lokal in der CloudStream-App gespeichert und kann nicht per GitHub-Repository aus der Ferne aktiviert werden. Ohne diese Einstellung kann ein neues Plugin zwar veröffentlicht sein, die App übernimmt es aber nicht automatisch.
+
+## Automatische Veröffentlichung und Versionsverwaltung
+
+- Jeder Push auf `master` oder `main` startet `.github/workflows/build.yml`; ein manueller Start über **Actions → Build → Run workflow** ist ebenfalls möglich.
+- Der Workflow baut die Plugins und erstellt `plugins.json`.
+- Vor der Veröffentlichung prüft der Workflow jetzt, dass `plugins.json` gültig ist, keine doppelten Plugin-IDs enthält, jede referenzierte `.cs3`-Datei vorhanden ist und Dateigröße sowie SHA-256-Hash mit den Metadaten übereinstimmen.
+- Erst wenn Build und Validierung erfolgreich sind, wird der Branch `builds` veröffentlicht. Ein fehlgeschlagener Build darf die zuletzt gültige Veröffentlichung nicht ersetzen.
+- Die Plugin-Version wird aus der GitHub-Actions-Laufnummer gesetzt. Sie steigt bei späteren Builds an, damit CloudStream eine neuere Version erkennt.
+- Build-Läufe werden nicht mehr mitten in der Veröffentlichung abgebrochen. Nach mehreren schnellen Commits soll der neueste ausstehende Lauf den aktuellen Code veröffentlichen.
+- In **Settings → Actions → General → Workflow permissions** muss **Read and write permissions** erlaubt sein, damit GitHub Actions den Branch `builds` aktualisieren kann.
+
+## Neue Website / neues Plugin hinzufügen
+
+Wenn eine neue Website integriert werden soll, kann ein eigener Modulordner mit einer `build.gradle.kts`-Datei und dem CloudStream-Provider-/Plugin-Code angelegt werden. `settings.gradle.kts` erkennt solche Module automatisch. Nach dem Commit baut der Workflow sie, generiert die Metadaten und veröffentlicht sie mit den bestehenden Plugins. **`repo.json` und `plugins.json` müssen nicht von Hand gepflegt werden.** Sieh dir dazu [PROVIDER_TEMPLATE.md](PROVIDER_TEMPLATE.md) an.
+
+Das automatisiert Build, Versionsnummern, Index und Veröffentlichung – es kann jedoch nicht selbstständig eine Website reparieren, wenn diese ihre HTML-Struktur oder Such-/Player-Funktion ändert. In so einem Fall muss der betroffene Provider-Code angepasst werden. Der CI-Build prüft Kompilierung und Veröffentlichung, nicht ob jede Live-Seite in CloudStream in jedem Moment korrekt funktioniert.
 
 Die Provider sind Community-Integrationen und keine offiziellen CloudStream-Dienste. Verwende nur Inhalte, auf die du zugreifen darfst.
