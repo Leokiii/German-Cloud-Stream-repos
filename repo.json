@@ -1,6 +1,6 @@
 {
-  "name": "German CloudStream Repos",
-  "description": "German anime CloudStream plugins: AniWorld, AnimeToast, Anime-Stream, Anime-Base",
+  "name": "🇩🇪 German CloudStream Anime",
+  "description": "Deutsche Anime-Anbieter: AniWorld, Anime-Base, Anime-Stream und AnimeToast. Ger-Dub/Ger-Sub je nach Titel und Anbieter.",
   "manifestVersion": 1,
   "pluginLists": [
     "https://raw.githubusercontent.com/Leokiii/German-Cloud-Stream-repos/builds/plugins.json"
