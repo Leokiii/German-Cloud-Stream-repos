@@ -3,6 +3,10 @@ name: Build
 on:
   push:
     branches: [master, main]
+    # Documentation-only edits should not republish identical provider binaries.
+    paths-ignore:
+      - "*.md"
+      - "**/*.md"
   workflow_dispatch:
 
 permissions:
@@ -37,7 +41,25 @@ jobs:
         run: |
           set -euo pipefail
           chmod +x ./gradlew
-          ./gradlew --no-daemon --stacktrace make makePluginsJson
+          build_success=0
+          for attempt in 1 2 3; do
+            echo "::group::Gradle build attempt $attempt/3"
+            if ./gradlew --no-daemon --stacktrace make makePluginsJson; then
+              build_success=1
+              echo "::endgroup::"
+              break
+            fi
+            echo "::endgroup::"
+            if [ "$attempt" -lt 3 ]; then
+              echo "::warning::Gradle build failed on attempt $attempt/3; retrying in case this was a transient dependency/network issue."
+              ./gradlew --stop || true
+              sleep $((attempt * 10))
+            fi
+          done
+          if [ "$build_success" -ne 1 ]; then
+            echo "::error::CloudStream plugin build failed after three attempts."
+            exit 1
+          fi
           test -s build/plugins.json
           publish_dir="$RUNNER_TEMP/cloudstream-publish"
           mkdir -p "$publish_dir"
