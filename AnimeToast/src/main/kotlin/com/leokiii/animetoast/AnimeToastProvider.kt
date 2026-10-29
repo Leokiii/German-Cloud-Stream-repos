@@ -36,9 +36,9 @@ class AnimeToastProvider : MainAPI() {
     )
 
     override val mainPage = mainPageOf(
-        "$mainUrl/" to "Neu hinzugefügt",
-        "$mainUrl/page/2/" to "Weitere Anime",
-        "$mainUrl/page/3/" to "Mehr entdecken",
+        "$mainUrl/" to "Startseite – alle Bereiche",
+        "$mainUrl/latest-uploads/" to "Zuletzt hinzugefügt",
+        "$mainUrl/home-3/" to "Weitere Updates",
     )
 
     override suspend fun getMainPage(
