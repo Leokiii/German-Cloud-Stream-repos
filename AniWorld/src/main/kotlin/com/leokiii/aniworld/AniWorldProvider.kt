@@ -215,25 +215,39 @@ class AniWorldProvider : MainAPI() {
     ): Boolean {
         val document = app.get(data).document
         var found = false
+        val candidates = linkedSetOf<String>()
 
+        // Older AniWorld markup exposed hosters as list items. The live page now
+        // also embeds a /redirect/<id> URL directly in an iframe inside hosterSiteVideo.
         document.select("div.hosterSiteVideo ul li").forEach { li ->
             val redirect = li.selectFirst("a.watchEpisode")?.attr("href")
                 ?: li.attr("data-link-target")
-            if (redirect.isNullOrBlank()) return@forEach
-
-            val hostUrl = try {
-                app.get(fixUrl(redirect), allowRedirects = false)
-                    .headers["location"]
-                    ?: app.get(fixUrl(redirect)).url
-            } catch (_: Exception) {
-                fixUrl(redirect)
+            if (!redirect.isNullOrBlank()) candidates.add(redirect)
+        }
+        document.select("div.hosterSiteVideo iframe[src], div.hosterSiteVideo video source[src]")
+            .forEach { element ->
+                element.attr("src").takeIf { it.isNotBlank() }?.let { candidates.add(it) }
+            }
+        document.select("a.watchEpisode[href], [data-link-target]")
+            .forEach { element ->
+                val link = element.attr("href").ifBlank { element.attr("data-link-target") }
+                if (link.isNotBlank()) candidates.add(link)
             }
 
-            if (loadExtractor(hostUrl, mainUrl, subtitleCallback, callback)) {
+        for (raw in candidates) {
+            val redirectUrl = fixUrl(raw)
+            val hostUrl = try {
+                val redirectResponse = app.get(redirectUrl, allowRedirects = false, referer = data)
+                redirectResponse.headers["location"]?.let { fixUrl(it) }
+                    ?: app.get(redirectUrl, referer = data).url
+            } catch (_: Exception) {
+                redirectUrl
+            }
+
+            if (loadExtractor(hostUrl, data, subtitleCallback, callback)) {
                 found = true
             }
         }
-
         return found
     }
 }
