@@ -1,6 +1,5 @@
 // use an integer for version numbers
-version = 1
-
+version = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1
 
 cloudstream {
     language = "de"
