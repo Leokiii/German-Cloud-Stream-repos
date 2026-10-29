@@ -1,0 +1,90 @@
+[
+    {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=anime-base.net&sz=%size%",
+        "fileHash": "sha256-5a711515b9d084b4c70b7a48f3380441016750ba5bf293d37bfd0621e73dc553",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/Leokiii/German-Cloud-Stream-repos",
+        "fileSize": 14170,
+        "status": 0,
+        "language": "de",
+        "authors": [
+            "Leokiii"
+        ],
+        "tvTypes": [
+            "AnimeMovie",
+            "Anime",
+            "OVA"
+        ],
+        "version": 34,
+        "internalName": "AnimeBase",
+        "description": "Anime-Base.net - nicht verf\u00fcgbar (Website geschlossen)",
+        "url": "https://raw.githubusercontent.com/Leokiii/German-Cloud-Stream-repos/builds/AnimeBase.cs3",
+        "name": "AnimeBase"
+    },
+    {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=anime-stream.to&sz=%size%",
+        "fileHash": "sha256-06c444411d5f79bc849677cf5ab7d1f54191d00353c3763ee4e69ff2d3e42dcc",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/Leokiii/German-Cloud-Stream-repos",
+        "fileSize": 16909,
+        "status": 1,
+        "language": "de",
+        "authors": [
+            "Leokiii"
+        ],
+        "tvTypes": [
+            "AnimeMovie",
+            "Anime",
+            "OVA"
+        ],
+        "version": 34,
+        "internalName": "AnimeStream",
+        "description": "Anime-Stream.to - German anime streaming",
+        "url": "https://raw.githubusercontent.com/Leokiii/German-Cloud-Stream-repos/builds/AnimeStream.cs3",
+        "name": "AnimeStream"
+    },
+    {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=animetoast.cc&sz=%size%",
+        "fileHash": "sha256-1c1445f9a1e25bb09fc5845c0759ebf48d17039b8ad3daba6ddacaeb44ccb2be",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/Leokiii/German-Cloud-Stream-repos",
+        "fileSize": 17495,
+        "status": 1,
+        "language": "de",
+        "authors": [
+            "Leokiii"
+        ],
+        "tvTypes": [
+            "AnimeMovie",
+            "Anime",
+            "OVA"
+        ],
+        "version": 34,
+        "internalName": "AnimeToast",
+        "description": "AnimeToast.cc - German anime (Ger-Dub & Ger-Sub)",
+        "url": "https://raw.githubusercontent.com/Leokiii/German-Cloud-Stream-repos/builds/AnimeToast.cs3",
+        "name": "AnimeToast"
+    },
+    {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=aniworld.to&sz=%size%",
+        "fileHash": "sha256-a81799ab3de659d53d9b8826a11af1ccc905be9caf9f66cea67b6c0c9ed63879",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/Leokiii/German-Cloud-Stream-repos",
+        "fileSize": 19105,
+        "status": 1,
+        "language": "de",
+        "authors": [
+            "Leokiii"
+        ],
+        "tvTypes": [
+            "AnimeMovie",
+            "Anime",
+            "OVA"
+        ],
+        "version": 34,
+        "internalName": "AniWorld",
+        "description": "AniWorld.to - German anime (subbed & dubbed)",
+        "url": "https://raw.githubusercontent.com/Leokiii/German-Cloud-Stream-repos/builds/AniWorld.cs3",
+        "name": "AniWorld"
+    }
+]
