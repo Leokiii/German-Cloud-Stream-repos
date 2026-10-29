@@ -16,9 +16,11 @@ import com.lagradost.cloudstream3.addEpisodes
 import com.lagradost.cloudstream3.DubStatus
 import com.lagradost.cloudstream3.Episode
 import com.lagradost.cloudstream3.newHomePageResponse
+import com.lagradost.cloudstream3.mainPageOf
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.loadExtractor
 import org.jsoup.nodes.Element
+import java.net.URLEncoder
 
 class AnimeToastProvider : MainAPI() {
     override var mainUrl = "https://www.animetoast.cc"
@@ -33,39 +35,80 @@ class AnimeToastProvider : MainAPI() {
         TvType.OVA,
     )
 
+    override val mainPage = mainPageOf(
+        "$mainUrl/" to "Startseite – alle Bereiche",
+        "$mainUrl/latest-uploads/" to "Zuletzt hinzugefügt",
+        "$mainUrl/home-3/" to "Weitere Updates",
+    )
+
     override suspend fun getMainPage(
         page: Int,
         request: MainPageRequest
     ): HomePageResponse {
-        // AnimeToast is a WordPress theme; the front page lists recent series as video-item cards.
-        val document = app.get(mainUrl).document
-        val home = document.select("div.video-item, div.item-thumbnail")
-            .mapNotNull { it.toSearchResult() }
-            .distinctBy { it.url }
-        return newHomePageResponse("Aktuelle Animes", home, hasNext = false)
+        // WordPress can use different markup on the front page and archive pages.
+        // Respect the selected archive and advance its /page/N/ URL when CloudStream
+        // requests additional pages, instead of returning the same cards repeatedly.
+        val baseUrl = request.data.trimEnd('/')
+        val pagePattern = Regex("(/page/)(\\d+)$")
+        val target = if (page <= 1) {
+            request.data
+        } else {
+            val match = pagePattern.find(baseUrl)
+            if (match != null) {
+                val nextNumber = (match.groupValues[2].toIntOrNull() ?: 1) + page - 1
+                baseUrl.substringBeforeLast("/page/") + "/page/$nextNumber/"
+            } else {
+                "$baseUrl/page/$page/"
+            }
+        }
+        val document = app.get(target).document
+        val home = document.select(
+            "div.video-item, div.item-thumbnail, article, .post, .anime-item, .anime-card, .item"
+        ).mapNotNull { it.toSearchResult() }.distinctBy { it.url }
+        val hasNext = document.select(
+            "a.next, a.next.page-numbers, .nav-links a.next, a[rel=next]"
+        ).isNotEmpty()
+        return newHomePageResponse(request.name, home, hasNext = hasNext)
     }
 
     private fun Element.toSearchResult(): SearchResponse? {
-        val anchor = this.selectFirst("div.item-thumbnail a")
-            ?: this.selectFirst("a[href]")
-            ?: return null
+        val anchor = selectFirst(
+            "div.item-thumbnail a[href], .post-thumbnail a[href], a.video-item[href], " +
+                "a[href*='/anime/'], a[href*='/series/'], a[href]"
+        ) ?: return null
         val href = fixUrlNull(anchor.attr("href")) ?: return null
-        val title = anchor.attr("title").ifBlank {
-            this.selectFirst("img")?.attr("alt").orEmpty()
-        }.ifBlank { anchor.text() }.trim()
-        if (title.isEmpty()) return null
-        val poster = fixUrlNull(this.selectFirst("img")?.let {
-            it.attr("data-src").ifBlank { it.attr("src") }
-        })
+        if (href == mainUrl || href.contains("/page/") || href.contains("/category/") ||
+            href.contains("/tag/") || href.contains("/author/")) return null
+
+        val image = selectFirst("img") ?: anchor.selectFirst("img")
+        val title = sequenceOf(
+            anchor.attr("title"),
+            selectFirst("h2, h3, h4, .entry-title, .post-title, .title")?.text().orEmpty(),
+            image?.attr("alt").orEmpty(),
+            anchor.text()
+        ).map { it.trim() }.firstOrNull { it.isNotBlank() } ?: return null
+        val poster = image?.let { posterFromImage(it) }
         return newAnimeSearchResponse(title, href, TvType.Anime) {
             this.posterUrl = poster
         }
     }
 
+    private fun posterFromImage(image: Element): String? {
+        val raw = listOf(
+            "data-lazy-src", "data-src", "data-original", "data-original-src",
+            "data-image", "data-poster", "data-thumb", "srcset", "src"
+        ).asSequence()
+            .map { image.attr(it).trim() }
+            .firstOrNull { it.isNotBlank() && !it.startsWith("data:image", ignoreCase = true) }
+            ?: return null
+        return fixUrlNull(raw.substringBefore(",").trim().substringBefore(" ").trim())
+    }
+
     override suspend fun search(query: String): List<SearchResponse> {
         // WordPress search endpoint.
-        val document = app.get("$mainUrl/?s=$query").document
-        return document.select("div.item-thumbnail a[href], div.video-item")
+        val encoded = URLEncoder.encode(query, "UTF-8")
+        val document = app.get("$mainUrl/?s=$encoded").document
+        return document.select("div.item-thumbnail a[href], div.video-item, article, .post, .anime-item, .anime-card")
             .mapNotNull { el ->
                 if (el.tagName() == "a") {
                     val href = fixUrlNull(el.attr("href")) ?: return@mapNotNull null
@@ -73,7 +116,7 @@ class AnimeToastProvider : MainAPI() {
                         el.selectFirst("img")?.attr("alt").orEmpty()
                     }.trim()
                     if (title.isEmpty()) return@mapNotNull null
-                    val poster = fixUrlNull(el.selectFirst("img")?.attr("src"))
+                    val poster = el.selectFirst("img")?.let { posterFromImage(it) }
                     newAnimeSearchResponse(title, href, TvType.Anime) { this.posterUrl = poster }
                 } else {
                     el.toSearchResult()
@@ -90,10 +133,10 @@ class AnimeToastProvider : MainAPI() {
             ?: document.selectFirst("h1")?.text()
             ?: "AnimeToast"
 
-        val poster = fixUrlNull(
-            document.selectFirst("div.single-thumbnail img, div.post-thumbnail img, article img")
-                ?.let { it.attr("data-src").ifBlank { it.attr("src") } }
-        )
+        val poster = document.selectFirst("meta[property=og:image], meta[name=twitter:image]")
+            ?.attr("content")?.let { fixUrlNull(it) }
+            ?: document.selectFirst("div.single-thumbnail img, div.post-thumbnail img, article img, .featured-image img")
+                ?.let { posterFromImage(it) }
 
         val plot = document.selectFirst("div.entry-content p, div.post-content p")?.text()
         val tags = document.select("a[rel=tag], a[rel=\"category tag\"]").map { it.text() }.distinct()

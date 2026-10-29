@@ -34,77 +34,103 @@ class AnimeStreamProvider : MainAPI() {
         TvType.OVA,
     )
 
+    // The current homepage catalog is served from /backup. The two catalog pages
+    // provide a much larger searchable/browsable list, with page= pagination.
     override val mainPage = mainPageOf(
-        "$mainUrl/" to "Startseite",
-        "$mainUrl/alle-serien" to "Alle Serien",
-        "$mainUrl/alle-filme" to "Alle Filme",
+        "$mainUrl/backup" to "Neu auf Anime-Stream",
+        "$mainUrl/alle-serien" to "Alle Anime-Serien",
+        "$mainUrl/alle-filme" to "Alle Anime-Filme",
     )
 
     override suspend fun getMainPage(
         page: Int,
         request: MainPageRequest
     ): HomePageResponse {
+        val isCatalogPage = request.data.contains("/alle-serien") || request.data.contains("/alle-filme")
+        val baseTarget = request.data.substringBefore("#")
         val target = if (page > 1) {
-            request.data + (if (request.data.contains("?")) "&" else "?") + "page=" + page
+            baseTarget + (if (baseTarget.contains("?")) "&" else "?") + "page=" + page
         } else {
-            request.data
+            baseTarget
         }
         val document = app.get(target).document
-        val home = document.select(".panel")
+
+        // Parse actual title links rather than requiring the old .panel markup.
+        val home = document.select("a[href*='/anime-serien/'], a[href*='/anime-filme/']")
             .mapNotNull { it.toSearchResult() }
             .distinctBy { it.url }
-        val hasNext = document.select(".cyber-button[href*='page=']").any {
-            val href = it.attr("href")
-            href.isNotBlank() && !href.endsWith("page=$page")
-        }
+
+        val nextPage = page + 1
+        val hasNext = isCatalogPage && document.select(
+            "a[href*='page=$nextPage'], a[rel=next], .pagination a.next, a.next.page-numbers"
+        ).isNotEmpty()
         return newHomePageResponse(request.name, home, hasNext = hasNext)
     }
 
     private fun Element.toSearchResult(): SearchResponse? {
-        val anchor = this.selectFirst(".panel-header .panel-link[href]")
-            ?: this.selectFirst("a[href*='/anime-serien/'], a[href*='/anime-filme/']")
-            ?: return null
+        val anchor = if (tagName() == "a" && hasAttr("href")) this else
+            selectFirst("a[href*='/anime-serien/'], a[href*='/anime-filme/']") ?: return null
         val href = fixUrlNull(anchor.attr("href")) ?: return null
         if (!href.contains("/anime-serien/") && !href.contains("/anime-filme/")) return null
-        val title = anchor.attr("title").ifBlank { anchor.text() }.trim()
-        if (title.isEmpty()) return null
-        val image = this.selectFirst(".panel-header .content-box img, img")
-        val poster = fixUrlNull(image?.let {
-            it.attr("src").ifBlank { it.attr("data-src") }.ifBlank { it.attr("data-original") }
-        })
+
+        val card = anchor.closest("article, li, .card, .anime-card, .series-card, .anime-item, .item, .video-item, .panel")
+            ?: anchor.parent() ?: anchor
+        val image = card.selectFirst("img") ?: anchor.selectFirst("img")
+        val title = sequenceOf(
+            anchor.attr("title"),
+            anchor.attr("aria-label"),
+            card.selectFirst("h2, h3, h4, .title, .anime-title, .series-title")?.text().orEmpty(),
+            image?.attr("alt").orEmpty(),
+            anchor.text()
+        ).map { it.trim() }.firstOrNull { it.isNotBlank() } ?: return null
+        val poster = image?.let { posterFromImage(it) }
         val type = if (href.contains("/anime-filme/")) TvType.AnimeMovie else TvType.Anime
         return newAnimeSearchResponse(title, href, type) {
             this.posterUrl = poster
         }
     }
 
-    override suspend fun search(query: String) = run {
+    private fun posterFromImage(image: Element): String? {
+        val raw = listOf(
+            "data-lazy-src", "data-src", "data-original", "data-original-src",
+            "data-image", "data-poster", "data-thumb", "data-srcset", "srcset", "src"
+        ).asSequence()
+            .map { image.attr(it).trim() }
+            .firstOrNull { it.isNotBlank() && !it.startsWith("data:image", ignoreCase = true) }
+            ?: return null
+        val url = raw.substringBefore(",").trim().substringBefore(" ").trim()
+        return fixUrlNull(url)
+    }
+
+    override suspend fun search(query: String): List<SearchResponse> {
         val encoded = URLEncoder.encode(query, "UTF-8")
-        val document = app.get("$mainUrl/?q=$encoded").document
-        document.select(".search-results .search-result-item, .search-result-item")
-            .mapNotNull { item ->
-                val anchor = if (item.tagName() == "a" && item.hasAttr("href")) {
-                    item
-                } else {
-                    item.selectFirst("a[href*='/anime-serien/'], a[href*='/anime-filme/'], a[href]")
-                } ?: return@mapNotNull null
-                val href = fixUrlNull(anchor.attr("href")) ?: return@mapNotNull null
-                if (!href.contains("/anime-serien/") && !href.contains("/anime-filme/")) return@mapNotNull null
-                val title = item.selectFirst(".result-content h3, .result-content .result-title, .result-content .title")
-                    ?.text()?.trim()
-                    .takeUnless { it.isNullOrBlank() }
-                    ?: anchor.attr("title").ifBlank { anchor.text() }.trim()
-                if (title.isEmpty()) return@mapNotNull null
-                val image = item.selectFirst(".result-image img, img")
-                val poster = fixUrlNull(image?.let {
-                    it.attr("src").ifBlank { it.attr("data-src") }.ifBlank { it.attr("data-original") }
-                })
-                val type = if (href.contains("/anime-filme/")) TvType.AnimeMovie else TvType.Anime
-                newAnimeSearchResponse(title, href, type) {
-                    this.posterUrl = poster
+        val targets = listOf(
+            "$mainUrl/?q=$encoded",
+            "$mainUrl/?s=$encoded",
+            "$mainUrl/suche?q=$encoded"
+        )
+        val matchingPaths = "a[href*='/anime-serien/'], a[href*='/anime-filme/']"
+        for (target in targets) {
+            val document = try {
+                app.get(target).document
+            } catch (_: Exception) {
+                continue
+            }
+            val scoped = document.select(
+                ".search-results $matchingPaths, .search-result $matchingPaths, " +
+                    ".search-result-item $matchingPaths, .result-item $matchingPaths, " +
+                    ".search-results a[href], .search-result-item a[href]"
+            )
+            val candidates = if (scoped.isNotEmpty()) scoped else {
+                document.select(matchingPaths).filter { anchor ->
+                    anchor.attr("title").ifBlank { anchor.text() }
+                        .contains(query, ignoreCase = true)
                 }
             }
-            .distinctBy { it.url }
+            val results = candidates.mapNotNull { it.toSearchResult() }.distinctBy { it.url }
+            if (results.isNotEmpty()) return results
+        }
+        return emptyList()
     }
 
     override suspend fun load(url: String): LoadResponse {
@@ -112,10 +138,11 @@ class AnimeStreamProvider : MainAPI() {
         val title = document.selectFirst(".series-info .heading")?.text()?.trim()
             ?: document.selectFirst("h1")?.text()?.trim()
             ?: "Anime-Stream"
-        val poster = fixUrlNull(
-            document.selectFirst(".series-cover img, .banner img")
-                ?.let { it.attr("src").ifBlank { it.attr("data-src") } }
-        )
+        val poster = document.selectFirst("meta[property=og:image], meta[name=twitter:image]")?.attr("content")
+            ?.takeIf { it.isNotBlank() }
+            ?.let { fixUrlNull(it) }
+            ?: document.selectFirst(".series-cover img, .banner img, .anime-cover img, .poster img, .cover img, main img")
+                ?.let { posterFromImage(it) }
         val plot = document.selectFirst(".description-container .description")?.text()
         val tags = document.select(".series-meta .genres .genre-tag, .main-genre")
             .map { it.text().trim() }
