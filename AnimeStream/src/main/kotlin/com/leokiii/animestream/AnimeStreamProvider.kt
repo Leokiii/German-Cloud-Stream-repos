@@ -35,7 +35,7 @@ class AnimeStreamProvider : MainAPI() {
     )
 
     override val mainPage = mainPageOf(
-        "$mainUrl/backup" to "Neu auf Anime-Stream",
+        "$mainUrl/" to "Neue Anime",
         "$mainUrl/alle-serien" to "Alle Anime-Serien",
         "$mainUrl/alle-filme" to "Alle Anime-Filme",
     )
@@ -67,7 +67,7 @@ class AnimeStreamProvider : MainAPI() {
             selectFirst("a[href*='/anime-serien/'], a[href*='/anime-filme/']") ?: return null
         val href = fixUrlNull(anchor.attr("href")) ?: return null
         if (!href.contains("/anime-serien/") && !href.contains("/anime-filme/")) return null
-        val card = anchor.closest("article, li, .card, .anime-card, .series-card, .anime-item, .item, .video-item, .panel")
+        val card = anchor.closest("article, li, .search-result-item, .card, .anime-card, .series-card, .anime-item, .item, .video-item, .panel")
             ?: anchor.parent() ?: anchor
         val image = card.selectFirst("img") ?: anchor.selectFirst("img")
         val title = sequenceOf(
