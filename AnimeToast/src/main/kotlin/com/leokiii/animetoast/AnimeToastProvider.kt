@@ -46,7 +46,22 @@ class AnimeToastProvider : MainAPI() {
         request: MainPageRequest
     ): HomePageResponse {
         // WordPress can use different markup on the front page and archive pages.
-        val document = app.get(request.data).document
+        // Respect the selected archive and advance its /page/N/ URL when CloudStream
+        // requests additional pages, instead of returning the same cards repeatedly.
+        val baseUrl = request.data.trimEnd('/')
+        val pagePattern = Regex("(/page/)(\\d+)$")
+        val target = if (page <= 1) {
+            request.data
+        } else {
+            val match = pagePattern.find(baseUrl)
+            if (match != null) {
+                val nextNumber = (match.groupValues[2].toIntOrNull() ?: 1) + page - 1
+                baseUrl.replace(pagePattern, "$1$nextNumber") + "/"
+            } else {
+                "$baseUrl/page/$page/"
+            }
+        }
+        val document = app.get(target).document
         val home = document.select(
             "div.video-item, div.item-thumbnail, article, .post, .anime-item, .anime-card, .item"
         ).mapNotNull { it.toSearchResult() }.distinctBy { it.url }
