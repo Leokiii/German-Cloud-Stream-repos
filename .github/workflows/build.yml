@@ -1,58 +1,78 @@
 name: Build
 
-# https://docs.github.com/en/actions/learn-github-actions/workflow-syntax-for-github-actions#concurrency
-concurrency: 
-  group: "build"
-  cancel-in-progress: true
-
 on:
   push:
-    branches:
-      # choose your default branch
-      - master
-      - main
-    paths-ignore:
-      - '*.md'
+    branches: [master, main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: cloudstream-build
+  cancel-in-progress: true
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@master
+      - name: Checkout source
+        uses: actions/checkout@v7
         with:
-          path: "src"
+          fetch-depth: 0
 
-      - name: Checkout builds
-        uses: actions/checkout@master
+      - name: Set up Java 17
+        uses: actions/setup-java@v6
         with:
-          ref: "builds"
-          path: "builds"
-      
-      - name: Clean old builds
-        run: rm $GITHUB_WORKSPACE/builds/*.cs3 || true
+          distribution: temurin
+          java-version: '17'
 
-      - name: Setup JDK 11
-        uses: actions/setup-java@v1
-        with:
-          java-version: 11
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v2
-
-      - name: Build Plugins
+      - name: Build CloudStream plugins
+        shell: bash
         run: |
-          cd $GITHUB_WORKSPACE/src
-          chmod +x gradlew
-          ./gradlew make makePluginsJson
-          cp **/build/*.cs3 $GITHUB_WORKSPACE/builds
-          cp build/plugins.json $GITHUB_WORKSPACE/builds
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew --no-daemon --stacktrace make makePluginsJson
 
-      - name: Push builds
+          test -s build/plugins.json || {
+            echo "::error::Gradle did not generate build/plugins.json."
+            exit 1
+          }
+
+          publish_dir="$RUNNER_TEMP/cloudstream-publish"
+          mkdir -p "$publish_dir"
+
+          while IFS= read -r -d '' artifact; do
+            cp "$artifact" "$publish_dir/"
+          done 1)
+
+          if ! find "$publish_dir" -maxdepth 1 -type f -name '*.cs3' -print -quit | grep -q .; then
+            echo "::error::Gradle did not produce any .cs3 plugin files."
+            exit 1
+          fi
+
+          cp build/plugins.json "$publish_dir/plugins.json"
+          test -s "$publish_dir/plugins.json"
+
+      - name: Publish builds branch
+        shell: bash
         run: |
-          cd $GITHUB_WORKSPACE/builds
-          git config --local user.email "actions@github.com"
-          git config --local user.name "GitHub Actions"
-          git add .
-          git commit --amend -m "Build $GITHUB_SHA" || exit 0   # do not error if nothing to commit
-          git push --force
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git switch --orphan cloudstream-publish
+          git clean -fdx
+          cp -a "$RUNNER_TEMP/cloudstream-publish/." .
+          git add -A
+
+          if git diff --cached --quiet; then
+            echo "No published files changed."
+            exit 0
+          fi
+
+          git commit -m "Build $GITHUB_SHA"
+          git push --force origin HEAD:builds
